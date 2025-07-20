@@ -22,58 +22,145 @@ interface DepartureData {
 export function LiveDashboard() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
   
-  // Simulated live departure data
-  const [departures, setDepartures] = useState<DepartureData[]>([
-    {
-      id: "1",
-      type: "train",
-      line: "S4",
-      destination: "Stuttgart Hauptbahnhof",
-      departure: "14:32",
-      platform: "2",
-      status: "delayed",
-      delay: 5,
-      nextDepartures: ["14:47", "15:02", "15:17"]
-    },
-    {
-      id: "2", 
-      type: "bus",
-      line: "443",
-      destination: "Schlossstraße",
-      departure: "14:28",
-      status: "on-time",
-      nextDepartures: ["14:43", "14:58", "15:13"]
-    },
-    {
-      id: "3",
-      type: "tram",
-      line: "1",
-      destination: "Hauptbahnhof",
-      departure: "14:30",
-      status: "cancelled",
-      nextDepartures: ["Replacement bus available"]
-    },
-    {
-      id: "4",
-      type: "train",
-      line: "S5",
-      destination: "Bietigheim-Bissingen",
-      departure: "14:35",
-      platform: "1",
-      status: "boarding",
-      nextDepartures: ["14:50", "15:05", "15:20"]
-    },
-    {
-      id: "5",
-      type: "bus", 
-      line: "42",
-      destination: "Marienplatz",
-      departure: "14:25",
-      status: "on-time",
-      nextDepartures: ["14:40", "14:55", "15:10"]
+  // Load user data on component mount
+  useEffect(() => {
+    const stored = localStorage.getItem('livelink_user');
+    if (stored) {
+      setUserData(JSON.parse(stored));
     }
-  ]);
+  }, []);
+
+  // Function to get departures based on pincode
+  const getDeparturesByPincode = (pincode: string): DepartureData[] => {
+    const departuresByArea: Record<string, DepartureData[]> = {
+      // Ludwigsburg Central (71634)
+      "71634": [
+        {
+          id: "1",
+          type: "train",
+          line: "S4",
+          destination: "Stuttgart Hauptbahnhof",
+          departure: "14:32",
+          platform: "2",
+          status: "delayed",
+          delay: 5,
+          nextDepartures: ["14:47", "15:02", "15:17"]
+        },
+        {
+          id: "2", 
+          type: "bus",
+          line: "443",
+          destination: "Schlossstraße",
+          departure: "14:28",
+          status: "on-time",
+          nextDepartures: ["14:43", "14:58", "15:13"]
+        },
+        {
+          id: "3",
+          type: "train",
+          line: "S5",
+          destination: "Bietigheim-Bissingen",
+          departure: "14:35",
+          platform: "1",
+          status: "boarding",
+          nextDepartures: ["14:50", "15:05", "15:20"]
+        }
+      ],
+      // Ludwigsburg West (71636)
+      "71636": [
+        {
+          id: "4",
+          type: "bus", 
+          line: "42",
+          destination: "Marienplatz",
+          departure: "14:25",
+          status: "on-time",
+          nextDepartures: ["14:40", "14:55", "15:10"]
+        },
+        {
+          id: "5",
+          type: "tram",
+          line: "1",
+          destination: "Hauptbahnhof",
+          departure: "14:30",
+          status: "cancelled",
+          nextDepartures: ["Replacement bus available"]
+        },
+        {
+          id: "6",
+          type: "bus",
+          line: "421",
+          destination: "Kornwestheim",
+          departure: "14:33",
+          status: "on-time",
+          nextDepartures: ["14:48", "15:03", "15:18"]
+        }
+      ],
+      // Ludwigsburg East (71638)
+      "71638": [
+        {
+          id: "7",
+          type: "bus",
+          line: "444",
+          destination: "Neckarweihingen",
+          departure: "14:26",
+          status: "delayed",
+          delay: 3,
+          nextDepartures: ["14:41", "14:56", "15:11"]
+        },
+        {
+          id: "8",
+          type: "train",
+          line: "S4",
+          destination: "Marbach",
+          departure: "14:38",
+          platform: "3",
+          status: "on-time",
+          nextDepartures: ["14:53", "15:08", "15:23"]
+        }
+      ],
+      // Ludwigsburg South (71640)
+      "71640": [
+        {
+          id: "9",
+          type: "bus",
+          line: "422",
+          destination: "Remseck",
+          departure: "14:29",
+          status: "on-time",
+          nextDepartures: ["14:44", "14:59", "15:14"]
+        },
+        {
+          id: "10",
+          type: "tram",
+          line: "2",
+          destination: "Aldingen",
+          departure: "14:31",
+          status: "delayed",
+          delay: 2,
+          nextDepartures: ["14:46", "15:01", "15:16"]
+        }
+      ]
+    };
+
+    // Return departures for the specific pincode, or default to central area
+    return departuresByArea[pincode] || departuresByArea["71634"];
+  };
+  
+  // Get departures based on user's pincode
+  const departures = userData?.pincode ? getDeparturesByPincode(userData.pincode) : getDeparturesByPincode("71634");
+
+  const getAreaName = (pincode: string) => {
+    const areaNames: Record<string, string> = {
+      "71634": "Central Ludwigsburg",
+      "71636": "West Ludwigsburg", 
+      "71638": "East Ludwigsburg",
+      "71640": "South Ludwigsburg"
+    };
+    return areaNames[pincode] || "Ludwigsburg Area";
+  };
 
   const refreshData = async () => {
     setIsRefreshing(true);
@@ -108,7 +195,24 @@ export function LiveDashboard() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary-light bg-clip-text text-transparent">
             LiveLink Ludwigsburg
           </h1>
-          <p className="text-muted-foreground">Real-time transit information for the greater Ludwigsburg area</p>
+          {userData && (
+            <div className="space-y-1">
+              <p className="text-lg font-medium text-foreground">
+                Welcome back, {userData.name}! 👋
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <Badge variant="outline" className="text-sm">
+                  📍 {getAreaName(userData.pincode)} ({userData.pincode})
+                </Badge>
+                <Badge variant="outline" className="text-sm capitalize">
+                  {userData.userType}
+                </Badge>
+              </div>
+            </div>
+          )}
+          <p className="text-muted-foreground">
+            {userData ? `Live departures near you in ${getAreaName(userData?.pincode || "71634")}` : "Real-time transit information for the greater Ludwigsburg area"}
+          </p>
           <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
             <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
             <button

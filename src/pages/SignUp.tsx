@@ -18,6 +18,7 @@ export default function SignUp() {
     email: "",
     password: "",
     confirmPassword: "",
+    pincode: "",
     agreeToTerms: false,
     userType: "commuter" as "commuter" | "tourist" | "senior"
   });
@@ -64,6 +65,7 @@ export default function SignUp() {
       name: formData.name,
       email: formData.email,
       userType: formData.userType,
+      pincode: formData.pincode,
       signedUp: true
     }));
     
@@ -160,6 +162,29 @@ export default function SignUp() {
                     required
                   />
                 </div>
+              </div>
+
+              {/* Pincode Field */}
+              <div className="space-y-2">
+                <Label htmlFor="pincode">Postal Code (PLZ)</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="pincode"
+                    type="text"
+                    placeholder="71634"
+                    className="pl-10"
+                    value={formData.pincode}
+                    onChange={handleInputChange('pincode')}
+                    maxLength={5}
+                    pattern="[0-9]{5}"
+                    title="Please enter a 5-digit postal code"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We'll show transit options near your location
+                </p>
               </div>
 
               {/* Password Field */}
