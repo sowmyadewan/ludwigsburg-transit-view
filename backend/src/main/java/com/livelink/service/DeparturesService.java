@@ -112,7 +112,8 @@ public class DeparturesService {
             JOIN transport_lines tl ON sd.line_id = tl.id
             JOIN transport_stops ts ON sd.stop_id = ts.id
             LEFT JOIN live_departures ld ON sd.id = ld.scheduled_departure_id
-            WHERE ts.id IN (""" + placeholders + """)
+            WHERE ts.id IN (""" + placeholders + """
+            )
             AND ts.is_active = true
             AND tl.is_active = true
             AND sd.is_active = true

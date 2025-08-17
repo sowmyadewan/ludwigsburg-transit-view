@@ -26,7 +26,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics,prometheus,info
+        include: health,prometheus,info
   endpoint:
     health:
       show-details: always
@@ -38,6 +38,9 @@ management:
     export:
       prometheus:
         enabled: true
+    enable:
+      process: false
+      system: false
 
 logging:
   level:
