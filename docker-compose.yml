@@ -77,7 +77,7 @@ services:
   # Frontend (React/Vite)
   frontend:
     build:
-      context: ./frontend
+      context: .
       dockerfile: Dockerfile
     container_name: livelink_frontend
     environment:
