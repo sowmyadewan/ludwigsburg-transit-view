@@ -5,9 +5,15 @@ import com.livelink.entity.TransportStop;
 import com.livelink.repository.TransportStopRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
-import java.util.Arrays;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Arrays;
 import java.util.stream.Collectors;
 
 @Service
@@ -15,84 +21,150 @@ public class DeparturesService {
 
     @Autowired
     private TransportStopRepository transportStopRepository;
+    
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     public List<ApiDeparture> getDeparturesByPincode(String pincode) {
-        List<TransportStop> stops = transportStopRepository.findByPincodeAndIsActiveTrue(pincode);
-        
-        // For now, return dummy data based on pincode
-        return createDummyDepartures(pincode, stops);
+        String sql = """
+            SELECT 
+                sd.id as departure_id,
+                tl.transport_type,
+                tl.line_number,
+                sd.direction as destination,
+                sd.departure_time,
+                ld.actual_departure_time,
+                sd.platform,
+                COALESCE(ld.status, 'on-time') as status,
+                COALESCE(ld.delay_minutes, 0) as delay_minutes,
+                ts.id as stop_id,
+                ts.name as stop_name
+            FROM scheduled_departures sd
+            JOIN transport_lines tl ON sd.line_id = tl.id
+            JOIN transport_stops ts ON sd.stop_id = ts.id
+            LEFT JOIN live_departures ld ON sd.id = ld.scheduled_departure_id
+            WHERE ts.pincode = ? 
+            AND ts.is_active = true
+            AND tl.is_active = true
+            AND sd.is_active = true
+            AND sd.departure_time >= CURRENT_TIME
+            AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+            AND EXTRACT(dow FROM CURRENT_DATE) + 1 = ANY(sd.days_of_week)
+            ORDER BY sd.departure_time ASC
+            LIMIT 20
+            """;
+            
+        return jdbcTemplate.query(sql, new DepartureRowMapper(), pincode);
     }
 
     public List<ApiDeparture> getDeparturesByStop(String stopId) {
-        TransportStop stop = transportStopRepository.findById(stopId).orElse(null);
-        if (stop == null) {
-            return List.of();
-        }
-        
-        return createDummyDeparturesForStop(stop);
+        String sql = """
+            SELECT 
+                sd.id as departure_id,
+                tl.transport_type,
+                tl.line_number,
+                sd.direction as destination,
+                sd.departure_time,
+                ld.actual_departure_time,
+                sd.platform,
+                COALESCE(ld.status, 'on-time') as status,
+                COALESCE(ld.delay_minutes, 0) as delay_minutes,
+                ts.id as stop_id,
+                ts.name as stop_name
+            FROM scheduled_departures sd
+            JOIN transport_lines tl ON sd.line_id = tl.id
+            JOIN transport_stops ts ON sd.stop_id = ts.id
+            LEFT JOIN live_departures ld ON sd.id = ld.scheduled_departure_id
+            WHERE ts.id = ? 
+            AND ts.is_active = true
+            AND tl.is_active = true
+            AND sd.is_active = true
+            AND sd.departure_time >= CURRENT_TIME
+            AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+            AND EXTRACT(dow FROM CURRENT_DATE) + 1 = ANY(sd.days_of_week)
+            ORDER BY sd.departure_time ASC
+            LIMIT 10
+            """;
+            
+        return jdbcTemplate.query(sql, new DepartureRowMapper(), stopId);
     }
 
     public List<ApiDeparture> getLiveDepartures(List<String> stopIds) {
-        List<TransportStop> stops = transportStopRepository.findAllById(stopIds);
-        
-        return stops.stream()
-                .flatMap(stop -> createDummyDeparturesForStop(stop).stream())
-                .collect(Collectors.toList());
-    }
-
-    private List<ApiDeparture> createDummyDepartures(String pincode, List<TransportStop> stops) {
-        if ("71634".equals(pincode)) {
-            return Arrays.asList(
-                createDeparture("dep_1", "train", "S4", "Stuttgart Hauptbahnhof", 
-                    "14:32", "14:37", "2", "delayed", 5, 
-                    Arrays.asList("14:47", "15:02", "15:17"),
-                    "stop_ludwigsburg_hbf", "Ludwigsburg Hauptbahnhof"),
-                createDeparture("dep_2", "bus", "443", "Schlossstraße", 
-                    "14:28", null, null, "on-time", null,
-                    Arrays.asList("14:43", "14:58", "15:13"),
-                    "stop_arsenalplatz", "Arsenalplatz"),
-                createDeparture("dep_3", "bus", "42", "Marienplatz", 
-                    "14:35", null, "B1", "on-time", null,
-                    Arrays.asList("14:50", "15:05", "15:20"),
-                    "stop_schlossstrasse", "Schlossstraße")
-            );
+        if (stopIds.isEmpty()) {
+            return List.of();
         }
         
-        // Default dummy data for other pincodes
-        return Arrays.asList(
-            createDeparture("dep_default", "bus", "Local", "City Center", 
-                "14:30", null, null, "on-time", null,
-                Arrays.asList("14:45", "15:00", "15:15"),
-                "stop_default", "Local Stop")
-        );
+        String placeholders = String.join(",", stopIds.stream().map(id -> "?").collect(Collectors.toList()));
+        String sql = """
+            SELECT 
+                sd.id as departure_id,
+                tl.transport_type,
+                tl.line_number,
+                sd.direction as destination,
+                sd.departure_time,
+                ld.actual_departure_time,
+                sd.platform,
+                COALESCE(ld.status, 'on-time') as status,
+                COALESCE(ld.delay_minutes, 0) as delay_minutes,
+                ts.id as stop_id,
+                ts.name as stop_name
+            FROM scheduled_departures sd
+            JOIN transport_lines tl ON sd.line_id = tl.id
+            JOIN transport_stops ts ON sd.stop_id = ts.id
+            LEFT JOIN live_departures ld ON sd.id = ld.scheduled_departure_id
+            WHERE ts.id IN (""" + placeholders + """)
+            AND ts.is_active = true
+            AND tl.is_active = true
+            AND sd.is_active = true
+            AND sd.departure_time >= CURRENT_TIME
+            AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+            AND EXTRACT(dow FROM CURRENT_DATE) + 1 = ANY(sd.days_of_week)
+            ORDER BY sd.departure_time ASC
+            """;
+            
+        return jdbcTemplate.query(sql, new DepartureRowMapper(), stopIds.toArray());
     }
 
-    private List<ApiDeparture> createDummyDeparturesForStop(TransportStop stop) {
-        return Arrays.asList(
-            createDeparture("dep_" + stop.getId(), "bus", "Local", "Destination", 
-                "14:30", null, null, "on-time", null,
-                Arrays.asList("14:45", "15:00", "15:15"),
-                stop.getId(), stop.getName())
-        );
-    }
-
-    private ApiDeparture createDeparture(String id, String transportType, String lineNumber,
-                                       String destination, String scheduledDeparture, String actualDeparture,
-                                       String platform, String status, Integer delayMinutes,
-                                       List<String> nextDepartures, String stopId, String stopName) {
-        ApiDeparture departure = new ApiDeparture();
-        departure.setId(id);
-        departure.setTransportType(transportType);
-        departure.setLineNumber(lineNumber);
-        departure.setDestination(destination);
-        departure.setScheduledDeparture(scheduledDeparture);
-        departure.setActualDeparture(actualDeparture);
-        departure.setPlatform(platform);
-        departure.setStatus(status);
-        departure.setDelayMinutes(delayMinutes);
-        departure.setNextDepartures(nextDepartures);
-        departure.setStopId(stopId);
-        departure.setStopName(stopName);
-        return departure;
+    private static class DepartureRowMapper implements RowMapper<ApiDeparture> {
+        @Override
+        public ApiDeparture mapRow(ResultSet rs, int rowNum) throws SQLException {
+            ApiDeparture departure = new ApiDeparture();
+            departure.setId(rs.getString("departure_id"));
+            departure.setTransportType(rs.getString("transport_type"));
+            departure.setLineNumber(rs.getString("line_number"));
+            departure.setDestination(rs.getString("destination"));
+            
+            // Format time for display
+            LocalTime depTime = rs.getTime("departure_time").toLocalTime();
+            departure.setScheduledDeparture(depTime.format(DateTimeFormatter.ofPattern("HH:mm")));
+            
+            // Handle actual departure time if available
+            if (rs.getTimestamp("actual_departure_time") != null) {
+                LocalTime actualTime = rs.getTimestamp("actual_departure_time").toLocalDateTime().toLocalTime();
+                departure.setActualDeparture(actualTime.format(DateTimeFormatter.ofPattern("HH:mm")));
+            }
+            
+            departure.setPlatform(rs.getString("platform"));
+            departure.setStatus(rs.getString("status"));
+            
+            int delayMinutes = rs.getInt("delay_minutes");
+            if (delayMinutes > 0) {
+                departure.setDelayMinutes(delayMinutes);
+            }
+            
+            departure.setStopId(rs.getString("stop_id"));
+            departure.setStopName(rs.getString("stop_name"));
+            
+            // Generate next departures (simplified for demo)
+            departure.setNextDepartures(generateNextDepartures(depTime, 3));
+            
+            return departure;
+        }
+        
+        private List<String> generateNextDepartures(LocalTime baseTime, int count) {
+            return java.util.stream.IntStream.range(1, count + 1)
+                .mapToObj(i -> baseTime.plusMinutes(15 * i).format(DateTimeFormatter.ofPattern("HH:mm")))
+                .collect(Collectors.toList());
+        }
     }
 }

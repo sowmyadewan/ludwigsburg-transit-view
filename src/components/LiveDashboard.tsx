@@ -6,25 +6,20 @@ import { AlertsBanner } from "./AlertsBanner";
 import { RouteSearch } from "./RouteSearch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Train, Bus, Navigation } from "lucide-react";
+import { apiService } from "@/services/api";
+import { ApiDeparture } from "@/types/api";
+import { toast } from "@/hooks/use-toast";
 
-interface DepartureData {
-  id: string;
-  type: "bus" | "train" | "tram";
-  line: string;
-  destination: string;
-  departure: string;
-  platform?: string;
-  status: "on-time" | "delayed" | "cancelled" | "boarding";
-  delay?: number;
-  nextDepartures?: string[];
-}
+// Remove old interface, using ApiDeparture from types
 
 export function LiveDashboard() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userData, setUserData] = useState<any>(null);
+  const [departures, setDepartures] = useState<ApiDeparture[]>([]);
+  const [loading, setLoading] = useState(true);
   
-  // Load user data on component mount
+  // Load user data and initial departures
   useEffect(() => {
     const stored = localStorage.getItem('livelink_user');
     if (stored) {
@@ -32,125 +27,50 @@ export function LiveDashboard() {
     }
   }, []);
 
-  // Function to get departures based on pincode
-  const getDeparturesByPincode = (pincode: string): DepartureData[] => {
-    const departuresByArea: Record<string, DepartureData[]> = {
-      // Ludwigsburg Central (71634)
-      "71634": [
-        {
-          id: "1",
-          type: "train",
-          line: "S4",
-          destination: "Stuttgart Hauptbahnhof",
-          departure: "14:32",
-          platform: "2",
-          status: "delayed",
-          delay: 5,
-          nextDepartures: ["14:47", "15:02", "15:17"]
-        },
-        {
-          id: "2", 
-          type: "bus",
-          line: "443",
-          destination: "Schlossstraße",
-          departure: "14:28",
-          status: "on-time",
-          nextDepartures: ["14:43", "14:58", "15:13"]
-        },
-        {
-          id: "3",
-          type: "train",
-          line: "S5",
-          destination: "Bietigheim-Bissingen",
-          departure: "14:35",
-          platform: "1",
-          status: "boarding",
-          nextDepartures: ["14:50", "15:05", "15:20"]
-        }
-      ],
-      // Ludwigsburg West (71636)
-      "71636": [
-        {
-          id: "4",
-          type: "bus", 
-          line: "42",
-          destination: "Marienplatz",
-          departure: "14:25",
-          status: "on-time",
-          nextDepartures: ["14:40", "14:55", "15:10"]
-        },
-        {
-          id: "5",
-          type: "tram",
-          line: "1",
-          destination: "Hauptbahnhof",
-          departure: "14:30",
-          status: "cancelled",
-          nextDepartures: ["Replacement bus available"]
-        },
-        {
-          id: "6",
-          type: "bus",
-          line: "421",
-          destination: "Kornwestheim",
-          departure: "14:33",
-          status: "on-time",
-          nextDepartures: ["14:48", "15:03", "15:18"]
-        }
-      ],
-      // Ludwigsburg East (71638)
-      "71638": [
-        {
-          id: "7",
-          type: "bus",
-          line: "444",
-          destination: "Neckarweihingen",
-          departure: "14:26",
-          status: "delayed",
-          delay: 3,
-          nextDepartures: ["14:41", "14:56", "15:11"]
-        },
-        {
-          id: "8",
-          type: "train",
-          line: "S4",
-          destination: "Marbach",
-          departure: "14:38",
-          platform: "3",
-          status: "on-time",
-          nextDepartures: ["14:53", "15:08", "15:23"]
-        }
-      ],
-      // Ludwigsburg South (71640)
-      "71640": [
-        {
-          id: "9",
-          type: "bus",
-          line: "422",
-          destination: "Remseck",
-          departure: "14:29",
-          status: "on-time",
-          nextDepartures: ["14:44", "14:59", "15:14"]
-        },
-        {
-          id: "10",
-          type: "tram",
-          line: "2",
-          destination: "Aldingen",
-          departure: "14:31",
-          status: "delayed",
-          delay: 2,
-          nextDepartures: ["14:46", "15:01", "15:16"]
-        }
-      ]
-    };
+  // Fetch departures when userData changes
+  useEffect(() => {
+    if (userData?.pincode) {
+      fetchDepartures(userData.pincode);
+    } else {
+      fetchDepartures("71634"); // Default to central Ludwigsburg
+    }
+  }, [userData]);
 
-    // Return departures for the specific pincode, or default to central area
-    return departuresByArea[pincode] || departuresByArea["71634"];
+  const fetchDepartures = async (pincode: string) => {
+    try {
+      setLoading(true);
+      const data = await apiService.getDeparturesByPincode(pincode);
+      setDepartures(data);
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Failed to fetch departures:', error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to fetch live departures. Please check if the backend is running.",
+        variant: "destructive",
+      });
+      // Fallback to empty array
+      setDepartures([]);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Convert ApiDeparture to DepartureData format for existing components
+  const convertToDepartureData = (apiDep: ApiDeparture) => ({
+    id: apiDep.id,
+    type: apiDep.transportType as "bus" | "train" | "tram",
+    line: apiDep.lineNumber,
+    destination: apiDep.destination,
+    departure: apiDep.scheduledDeparture,
+    platform: apiDep.platform,
+    status: apiDep.status as "on-time" | "delayed" | "cancelled" | "boarding",
+    delay: apiDep.delayMinutes,
+    nextDepartures: apiDep.nextDepartures
+  });
   
-  // Get departures based on user's pincode
-  const departures = userData?.pincode ? getDeparturesByPincode(userData.pincode) : getDeparturesByPincode("71634");
+  // Convert API departures to component format
+  const departureData = departures.map(convertToDepartureData);
 
   const getAreaName = (pincode: string) => {
     const areaNames: Record<string, string> = {
@@ -164,24 +84,24 @@ export function LiveDashboard() {
 
   const refreshData = async () => {
     setIsRefreshing(true);
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setLastUpdated(new Date());
+    const pincode = userData?.pincode || "71634";
+    await fetchDepartures(pincode);
     setIsRefreshing(false);
   };
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      setLastUpdated(new Date());
+      const pincode = userData?.pincode || "71634";
+      fetchDepartures(pincode);
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [userData]);
 
   const getStatusCounts = () => {
-    const onTime = departures.filter(d => d.status === "on-time").length;
-    const delayed = departures.filter(d => d.status === "delayed").length;
-    const cancelled = departures.filter(d => d.status === "cancelled").length;
+    const onTime = departureData.filter(d => d.status === "on-time").length;
+    const delayed = departureData.filter(d => d.status === "delayed").length;
+    const cancelled = departureData.filter(d => d.status === "cancelled").length;
     return { onTime, delayed, cancelled };
   };
 
@@ -279,9 +199,20 @@ export function LiveDashboard() {
                 <CardTitle>Next Departures</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {departures.map((departure) => (
-                  <TransportCard key={departure.id} {...departure} />
-                ))}
+                {loading ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-muted-foreground">Loading departures...</p>
+                  </div>
+                ) : departureData.length > 0 ? (
+                  departureData.map((departure) => (
+                    <TransportCard key={departure.id} {...departure} />
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No departures found for this area.</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
