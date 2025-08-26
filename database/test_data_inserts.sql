@@ -94,7 +94,7 @@ INSERT INTO scheduled_departures (line_id, stop_id, departure_time, days_of_week
 ('line_s4', 'stop_neckarweihingen', '22:45:00', '{1,2,3,4,5,6,7}', '1', 'Stuttgart Hauptbahnhof', true);
 
 -- Add some live departure updates to make it more realistic
--- Get the scheduled departure IDs first, then add live updates
+-- Add multiple delayed departures with different delay times
 INSERT INTO live_departures (scheduled_departure_id, actual_departure_time, delay_minutes, status, updated_at)
 SELECT 
     sd.id,
@@ -106,9 +106,75 @@ FROM scheduled_departures sd
 JOIN transport_stops ts ON sd.stop_id = ts.id
 WHERE ts.pincode = '71638' 
     AND sd.departure_time >= CURRENT_TIME 
+    AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+    AND sd.line_id = 'line_s4'
+LIMIT 8;
+
+-- Add more delayed departures with 5-minute delays
+INSERT INTO live_departures (scheduled_departure_id, actual_departure_time, delay_minutes, status, updated_at)
+SELECT 
+    sd.id,
+    CURRENT_TIMESTAMP + (sd.departure_time - CURRENT_TIME) + INTERVAL '5 minutes',
+    5,
+    'delayed',
+    CURRENT_TIMESTAMP
+FROM scheduled_departures sd
+JOIN transport_stops ts ON sd.stop_id = ts.id
+WHERE ts.pincode = '71638' 
+    AND sd.departure_time >= CURRENT_TIME 
+    AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+    AND sd.line_id = 'line_620'
+    AND sd.id NOT IN (SELECT scheduled_departure_id FROM live_departures WHERE scheduled_departure_id IS NOT NULL)
+LIMIT 6;
+
+-- Add major delays (10-15 minutes)
+INSERT INTO live_departures (scheduled_departure_id, actual_departure_time, delay_minutes, status, updated_at)
+SELECT 
+    sd.id,
+    CURRENT_TIMESTAMP + (sd.departure_time - CURRENT_TIME) + INTERVAL '12 minutes',
+    12,
+    'delayed',
+    CURRENT_TIMESTAMP
+FROM scheduled_departures sd
+JOIN transport_stops ts ON sd.stop_id = ts.id
+WHERE ts.pincode = '71638' 
+    AND sd.departure_time >= CURRENT_TIME 
+    AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+    AND sd.line_id = 'line_621'
+    AND sd.id NOT IN (SELECT scheduled_departure_id FROM live_departures WHERE scheduled_departure_id IS NOT NULL)
+LIMIT 4;
+
+-- Add some severely delayed departures (20+ minutes)
+INSERT INTO live_departures (scheduled_departure_id, actual_departure_time, delay_minutes, status, updated_at)
+SELECT 
+    sd.id,
+    CURRENT_TIMESTAMP + (sd.departure_time - CURRENT_TIME) + INTERVAL '25 minutes',
+    25,
+    'delayed',
+    CURRENT_TIMESTAMP
+FROM scheduled_departures sd
+JOIN transport_stops ts ON sd.stop_id = ts.id
+WHERE ts.pincode = '71638' 
+    AND sd.departure_time >= CURRENT_TIME 
     AND sd.departure_time <= CURRENT_TIME + INTERVAL '1 hour'
-    AND random() < 0.3  -- 30% chance of delay
-LIMIT 5;
+    AND sd.id NOT IN (SELECT scheduled_departure_id FROM live_departures WHERE scheduled_departure_id IS NOT NULL)
+LIMIT 3;
+
+-- Add some cancelled departures
+INSERT INTO live_departures (scheduled_departure_id, actual_departure_time, delay_minutes, status, updated_at)
+SELECT 
+    sd.id,
+    NULL,
+    NULL,
+    'cancelled',
+    CURRENT_TIMESTAMP
+FROM scheduled_departures sd
+JOIN transport_stops ts ON sd.stop_id = ts.id
+WHERE ts.pincode = '71638' 
+    AND sd.departure_time >= CURRENT_TIME 
+    AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
+    AND sd.id NOT IN (SELECT scheduled_departure_id FROM live_departures WHERE scheduled_departure_id IS NOT NULL)
+LIMIT 2;
 
 -- Add some on-time departures
 INSERT INTO live_departures (scheduled_departure_id, actual_departure_time, delay_minutes, status, updated_at)
@@ -122,10 +188,9 @@ FROM scheduled_departures sd
 JOIN transport_stops ts ON sd.stop_id = ts.id
 WHERE ts.pincode = '71638' 
     AND sd.departure_time >= CURRENT_TIME 
-    AND sd.departure_time <= CURRENT_TIME + INTERVAL '1 hour'
+    AND sd.departure_time <= CURRENT_TIME + INTERVAL '2 hours'
     AND sd.id NOT IN (SELECT scheduled_departure_id FROM live_departures WHERE scheduled_departure_id IS NOT NULL)
-    AND random() < 0.5  -- 50% chance of having live update
-LIMIT 10;
+LIMIT 15;
 
 -- Verify the data
 SELECT 'Data inserted successfully. Run your API query now to see results.' as message;
